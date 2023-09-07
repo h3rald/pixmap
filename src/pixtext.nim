@@ -1,12 +1,17 @@
 import 
   std/sequtils,
   std/strutils,
-  std/os,
   nimPNG
 
 type
-  ImageData = object
+  PixMapData = object
     pixels: seq[string]
+    width: int
+    height: int
+
+type
+  PngData = object
+    pixels: seq[byte]
     width: int
     height: int
 
@@ -17,7 +22,7 @@ type
     pixels: seq[string]
     palette: seq[string]
 
-proc readPng(file: string): ImageData =
+proc readPng(file: string): PixMapData =
   let png = loadPNG32(seq[byte], file).get
   let bytes = png.data.mapIt(it.ord.toHex(2)).toSeq()
   var c = 1
@@ -33,7 +38,7 @@ proc readPng(file: string): ImageData =
   result.height = png.height
   result.width = png.width
 
-proc png*(inMap: string, inPalette: string): PNGResult[seq[byte]] =
+proc png*(inMap: string, inPalette: string): PngData =
   let pixmap = inMap.readFile
   let palette = inPalette.readFile.split("\n")
   let lines = pixmap.split("\n")
@@ -51,7 +56,9 @@ proc png*(inMap: string, inPalette: string): PNGResult[seq[byte]] =
       pixels.add val[2..3].parseHexInt.byte
       pixels.add val[4..5].parseHexInt.byte
       pixels.add val[6..7].parseHexInt.byte
-  result = encodePNG32(pixels, width, height)
+  result.pixels = pixels
+  result.width = width
+  result.height = height
 
 proc pixmap*(file: string): PixMap =
   let image = readPng(file)
@@ -69,8 +76,8 @@ proc pixmap*(file: string): PixMap =
       let index = result.palette.find(pixel)
       result.pixels.add index.toHex(1)
 
-proc write*(png: PNG[seq[byte]], file: string) =
-  savePNG32[seq[byte]](file, png.data, png.width, png.height)
+proc write*(png: PngData, file: string) =
+  discard savePNG32[seq[byte]](file, png.pixels, png.width, png.height)
 
 proc write*(pixmap: PixMap, outMap: string, outPalette: string) =
   var map = ""
@@ -85,5 +92,5 @@ proc write*(pixmap: PixMap, outMap: string, outPalette: string) =
   writeFile(outPalette, palette)
 
 when isMainModule:
-  "example/test.png".pixmap.write("example/test.pxmap", "example/test.pxplt")
+  pixmap("example/test.in.png").write("example/test.pxmap", "example/test.pxplt")
   png("example/test.pxmap", "example/test.pxplt").write("example/test.out.png")
