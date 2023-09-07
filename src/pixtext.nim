@@ -17,7 +17,7 @@ type
     pixels: seq[string]
     palette: seq[string]
 
-proc getImageData(file: string): ImageData =
+proc readPng(file: string): ImageData =
   let png = loadPNG32(seq[byte], file).get
   let bytes = png.data.mapIt(it.ord.toHex(2)).toSeq()
   var c = 1
@@ -33,7 +33,28 @@ proc getImageData(file: string): ImageData =
   result.height = png.height
   result.width = png.width
 
-proc pixmap(image: ImageData): PixMap =
+proc png*(inMap: string, inPalette: string): PNGResult[seq[byte]] =
+  let pixmap = inMap.readFile
+  let palette = inPalette.readFile.split("\n")
+  let lines = pixmap.split("\n")
+  let height = lines.len
+  let width = lines[0].len
+  var pixels: seq[byte] = newSeq[byte]()
+  for line in lines:
+    for cell in line:
+      var val = ""
+      if cell == ' ':
+        val = "00000000"
+      else:
+        val = palette[($cell).parseInt]
+      pixels.add val[0..1].parseHexInt.byte
+      pixels.add val[2..3].parseHexInt.byte
+      pixels.add val[4..5].parseHexInt.byte
+      pixels.add val[6..7].parseHexInt.byte
+  result = encodePNG32(pixels, width, height)
+
+proc pixmap*(file: string): PixMap =
+  let image = readPng(file)
   result.pixels = newSeq[string](0)
   result.width = image.width
   result.height = image.height
@@ -48,11 +69,12 @@ proc pixmap(image: ImageData): PixMap =
       let index = result.palette.find(pixel)
       result.pixels.add index.toHex(1)
 
-proc writePixFiles(pixmap: PixMap, file: string) =
+proc write*(png: PNG[seq[byte]], file: string) =
+  savePNG32[seq[byte]](file, png.data, png.width, png.height)
+
+proc write*(pixmap: PixMap, outMap: string, outPalette: string) =
   var map = ""
   let palette = pixmap.palette.join("\n")
-  let outMap = file
-  let outPalette = file.changeFileExt("pxplt")
   var c = 1
   for pixel in pixmap.pixels:
     map &= pixel
@@ -63,5 +85,5 @@ proc writePixFiles(pixmap: PixMap, file: string) =
   writeFile(outPalette, palette)
 
 when isMainModule:
-  let image = getImageData("example/test.png")
-  writePixFiles(image.pixmap, "example/test.pxmap")
+  "example/test.png".pixmap.write("example/test.pxmap", "example/test.pxplt")
+  png("example/test.pxmap", "example/test.pxplt").write("example/test.out.png")
