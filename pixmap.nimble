@@ -1,12 +1,12 @@
 # Package
 
 version       = "0.1.0"
-author        = "Cevasco, Fabio"
+author        = "Fabio Cevasco"
 description   = "A small utility to convert simple PNG images to textual pixel maps and vice-versa"
 license       = "MIT"
 srcDir        = "src"
 installExt    = @["nim"]
-bin           = @["pixtext"]
+bin           = @["pixmap"]
 
 
 # Dependencies
