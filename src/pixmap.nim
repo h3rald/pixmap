@@ -159,9 +159,6 @@ when isMainModule:
 
   if not SOURCE.fileExists:
     error(4, "Source file '$#' does not exist." % [SOURCE])
-  if not PALETTE.fileExists:
-    error(5, "Palette file '$#' does not exist." % [PALETTE])
-
 
   if SOURCE.endsWith(".png") or SOURCE.endsWith(".PNG"):
     TARGET = "pixmap"
@@ -173,6 +170,8 @@ when isMainModule:
 
   info("Generating: $#" % [OPT_OUTPUT])
   if TARGET == "pixmap":
-    pixmap(SOURCE).write(TARGET, PALETTE)
+    pixmap(SOURCE).write(OPT_OUTPUT, PALETTE)
   elif TARGET == "png":
-    png(SOURCE, PALETTE).write(TARGET)
+    if not PALETTE.fileExists:
+      error(5, "Palette file '$#' does not exist." % [PALETTE])
+    png(SOURCE, PALETTE).write(OPT_OUTPUT)
