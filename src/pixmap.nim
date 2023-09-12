@@ -23,8 +23,14 @@ type
   PixMap* = object
     width: int
     height: int
-    pixels: seq[string]
+    matrix: seq[seq[string]]
+    text: string
     palette: seq[string]
+
+var TARGET = ""
+var OPT_OUTPUT = ""
+var OPT_MAGNIFICATION = 1
+var ARGS = newSeq[string]()
 
 proc readPng(file: string): PixMapData =
   let png = loadPNG32(seq[byte], file).get
@@ -66,33 +72,46 @@ proc png*(inMap: string, inPalette: string): PngData =
 
 proc pixmap*(file: string): PixMap =
   let image = readPng(file)
-  result.pixels = newSeq[string](0)
+  result.text = ""
   result.width = image.width
   result.height = image.height
+  result.matrix = newSeq[seq[string]](result.height)
+  var rows = -1
+  var cols = 0
   var count = 0
   for pixel in image.pixels:
+    if count mod image.width == 0 and count < image.pixels.len:
+      # New row
+      rows += 1
+      cols = 0
+      result.matrix[rows] = newSeq[string](result.width)
+    else:
+      cols += 1
     if not result.palette.contains(pixel) and pixel != "00000000":
+      # Add new color to palette
       result.palette.add pixel
-      count += 1
     if pixel == "00000000":
-      result.pixels.add " "
+      # Transparent pixel
+      result.matrix[rows][cols] = " "
     else:
       let index = result.palette.find(pixel)
-      result.pixels.add index.toHex(1)
+      result.matrix[rows][cols] = index.toHex(1)
+    count += 1
+  for mr in countup(0, result.height-1):
+    for xr in countup(1, OPT_MAGNIFICATION):
+      for mc in countup(0, result.width-1):
+        for xc in countup(1, OPT_MAGNIFICATION):
+          result.text &= result.matrix[mr][mc]
+      result.text &= "\n"
+  # Remove last "\n"
+  result.text = result.text[0 .. ^2]
 
 proc write*(png: PngData, file: string) =
   discard savePNG32[seq[byte]](file, png.pixels, png.width, png.height)
 
 proc write*(pixmap: PixMap, outMap: string, outPalette: string) =
-  var map = ""
   let palette = pixmap.palette.join("\n")
-  var c = 1
-  for pixel in pixmap.pixels:
-    map &= pixel
-    if c mod pixmap.width == 0 and c != pixmap.pixels.len:
-      map &= "\n"
-    c += 1
-  writeFile(outMap, map)
+  writeFile(outMap, pixmap.text)
   writeFile(outPalette, palette)
 
 #########################################################################################
@@ -110,6 +129,7 @@ Options:
   --help,    -h            Displays this message.
   --output,  -o            Specifies the name of the output file (by default, it is named after
                            the source file).
+  --magnify, -m            Magnifies target by the specified (integer) factor (default: 1). 
   --version, -v            Displays the version of the application.
 """ % [pkgTitle, pkgVersion, pkgDescription, pkgAuthor]
 
@@ -121,12 +141,6 @@ proc info(msg: string) =
   echo msg
 
 when isMainModule:
-
-  var TARGET = ""
-  var OPT_OUTPUT = ""
-  var ARGS = newSeq[string]()
-
-
 
   for kind, key, val in getopt():
     case kind:
@@ -142,6 +156,11 @@ when isMainModule:
             quit(0)
           of "output", "o":
             OPT_OUTPUT = val
+          of "magnify", "m":
+            try:
+              OPT_MAGNIFICATION = val.parseInt
+            except CatchableError:
+              error(10, "Invalid magnification factor")
           else:
             discard
       else:
