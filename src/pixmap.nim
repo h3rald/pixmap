@@ -1,4 +1,4 @@
-import 
+import
   std/sequtils,
   std/strutils,
   std/parseopt,
@@ -19,7 +19,7 @@ type
     width: int
     height: int
 
-type 
+type
   PixMap* = object
     width: int
     height: int
@@ -48,12 +48,41 @@ proc readPng(file: string): PixMapData =
   result.height = png.height
   result.width = png.width
 
+proc createPixMap(mapFile: string, palFile: string): PixMap =
+  result.palette = palFile.readFile.split("\n")
+  result.text = mapFile.readFile
+  let lines = result.text.split("\n")
+  result.width = lines[0].len
+  result.height = lines.len
+  result.matrix = newSeq[seq[string]](result.height)
+  var row = -1
+  var col = 0
+  for line in lines:
+    row += 1
+    col = 0
+    result.matrix[row] = newSeq[string](result.width)
+    for c in line:
+      result.matrix[row][col] = $c
+      col += 1
+
+# Magnifies pixmap (text only)
+proc magnify(pixmap: var PixMap) =
+  pixmap.text = ""
+  for mr in countup(0, pixmap.height-1):
+    for xr in countup(1, OPT_MAGNIFICATION):
+      for mc in countup(0, pixmap.width-1):
+        for xc in countup(1, OPT_MAGNIFICATION):
+          pixmap.text &= pixmap.matrix[mr][mc]
+      pixmap.text &= "\n"
+  # Remove last "\n"
+  pixmap.text = pixmap.text[0 .. ^2]
+
 proc png*(inMap: string, inPalette: string): PngData =
-  let pixmap = inMap.readFile
-  let palette = inPalette.readFile.split("\n")
-  let lines = pixmap.split("\n")
-  let height = lines.len
-  let width = lines[0].len
+  var pixmap = createPixMap(inMap, inPalette)
+  pixmap.magnify()
+  let lines = pixmap.text.split("\n")
+  result.height = lines.len
+  result.width = lines[0].len
   var pixels: seq[byte] = newSeq[byte]()
   for line in lines:
     for cell in line:
@@ -61,14 +90,17 @@ proc png*(inMap: string, inPalette: string): PngData =
       if cell == ' ':
         val = "00000000"
       else:
-        val = palette[($cell).parseInt]
+        let i: int = fromHex[int]($cell)
+        try:
+          val = pixmap.palette[i]
+        except CatchableError:
+          echo "Attempting to parse '$#'" % [$cell]
+          echo getCurrentExceptionMsg()
       pixels.add val[0..1].parseHexInt.byte
       pixels.add val[2..3].parseHexInt.byte
       pixels.add val[4..5].parseHexInt.byte
       pixels.add val[6..7].parseHexInt.byte
   result.pixels = pixels
-  result.width = width
-  result.height = height
 
 proc pixmap*(file: string): PixMap =
   let image = readPng(file)
@@ -97,14 +129,15 @@ proc pixmap*(file: string): PixMap =
       let index = result.palette.find(pixel)
       result.matrix[rows][cols] = index.toHex(1)
     count += 1
-  for mr in countup(0, result.height-1):
-    for xr in countup(1, OPT_MAGNIFICATION):
-      for mc in countup(0, result.width-1):
-        for xc in countup(1, OPT_MAGNIFICATION):
-          result.text &= result.matrix[mr][mc]
-      result.text &= "\n"
+  result.magnify()
+  #for mr in countup(0, result.height-1):
+  #  for xr in countup(1, OPT_MAGNIFICATION):
+  #    for mc in countup(0, result.width-1):
+  #      for xc in countup(1, OPT_MAGNIFICATION):
+  #        result.text &= result.matrix[mr][mc]
+  #    result.text &= "\n"
   # Remove last "\n"
-  result.text = result.text[0 .. ^2]
+  #result.text = result.text[0 .. ^2]
 
 proc write*(png: PngData, file: string) =
   discard savePNG32[seq[byte]](file, png.pixels, png.width, png.height)
@@ -145,7 +178,7 @@ when isMainModule:
   for kind, key, val in getopt():
     case kind:
       of cmdArgument:
-        ARGS.add key 
+        ARGS.add key
       of cmdLongOption, cmdShortOption:
         case key:
           of "help", "h":
@@ -159,20 +192,21 @@ when isMainModule:
           of "magnify", "m":
             try:
               OPT_MAGNIFICATION = val.parseInt
+              echo "Magnification: $#x" % [val]
             except CatchableError:
               error(10, "Invalid magnification factor")
           else:
             discard
       else:
         discard
-  
+
   if ARGS.len == 0:
     error(1, "No argument specified.")
   if ARGS.len == 1:
     error(2, "Palette file not specified.")
   if ARGS.len > 2:
     error(3, "Too many argyuments.")
-  
+
   let SOURCE = ARGS[0].absolutePath
   let PALETTE = ARGS[1].absolutePath
 

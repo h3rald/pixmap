@@ -3,3 +3,6 @@ nimblecache/
 htmldocs/
 pixmap.exe
 pixmap
+/*.pixmap
+/*.pixpal
+/*.png
