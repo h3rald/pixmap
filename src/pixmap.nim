@@ -20,6 +20,11 @@ type
     height: int
 
 type
+  Point* = object
+    x: int
+    y: int
+
+type
   PixMap* = object
     width: int
     height: int
@@ -31,6 +36,8 @@ var TARGET = ""
 var OPT_OUTPUT = ""
 var OPT_MAGNIFICATION = 1
 var ARGS = newSeq[string]()
+var FROM: Point = Point(x: -1, y: -1)
+var TO: Point = Point(x: -1, y: -1)
 
 proc readPng(file: string): PixMapData =
   let png = loadPNG32(seq[byte], file).get
@@ -47,6 +54,42 @@ proc readPng(file: string): PixMapData =
   result.pixels = pixels
   result.height = png.height
   result.width = png.width
+
+proc parsePoint(s: string): Point =
+  let coords = s.split(",")
+  result.x = coords[0].parseInt
+  result.y = coords[1].parseInt
+
+proc isNil(p: Point): bool =
+  return p.x < 0 or p.y < 0
+
+proc validate(pfrom, pto: Point) =
+  if (pfrom.x > pto.x):
+    raise newException(ValueError, "'to' point x value ($#) is lower than 'from' point x value ($#)" %
+        [$pfrom.x, $pto.x])
+  if (pfrom.y > pto.y):
+    raise newException(ValueError, "'to' point y value is lower than 'from' point y value" %
+        [$pfrom.y, $pto.y])
+
+proc extract[T](matrix: seq[seq[T]], pfrom: Point, pto: Point): seq[seq[T]] =
+  let width = pto.x - pfrom.x
+  let height = pto.y - pfrom.y
+  result = newSeq[seq[T]](height)
+  var row = -1
+  var col = 0
+  var mx = -1
+  var my = 0
+  for line in matrix:
+    row += 1
+    col = 0
+    if row+1 >= pfrom.y and row+1 <= pto.y:
+      my += 1
+      result[row] = newSeq[T](width)
+      mx = 0
+    for cell in line:
+      if col+1 >= pfrom.x and col+1 <= pto.x:
+        result[mx][my] = cell
+        mx += 1
 
 proc createPixMap(mapFile: string, palFile: string): PixMap =
   result.palette = palFile.readFile.split("\n")
@@ -130,14 +173,6 @@ proc pixmap*(file: string): PixMap =
       result.matrix[rows][cols] = index.toHex(1)
     count += 1
   result.magnify()
-  #for mr in countup(0, result.height-1):
-  #  for xr in countup(1, OPT_MAGNIFICATION):
-  #    for mc in countup(0, result.width-1):
-  #      for xc in countup(1, OPT_MAGNIFICATION):
-  #        result.text &= result.matrix[mr][mc]
-  #    result.text &= "\n"
-  # Remove last "\n"
-  #result.text = result.text[0 .. ^2]
 
 proc write*(png: PngData, file: string) =
   discard savePNG32[seq[byte]](file, png.pixels, png.width, png.height)
@@ -162,6 +197,8 @@ Options:
   --help,    -h            Displays this message.
   --output,  -o            Specifies the name of the output file (by default, it is named after
                            the source file).
+  --from, -f               Point (row,col) in the pixmap or png from where to start extraction.
+  --to, -t                 Point (row,col) in the pixmap ot png where to start extraction.
   --magnify, -m            Magnifies target by the specified (integer) factor (default: 1). 
   --version, -v            Displays the version of the application.
 """ % [pkgTitle, pkgVersion, pkgDescription, pkgAuthor]
@@ -184,6 +221,16 @@ when isMainModule:
           of "help", "h":
             echo USAGE
             quit(0)
+          of "from", "f":
+            try:
+              FROM = val.parsePoint()
+            except CatchableError:
+              error(10, "Invalid 'from' point.")
+          of "to", "t":
+            try:
+              TO = val.parsePoint()
+            except CatchableError:
+              error(10, "Invalid 'to' point.")
           of "version", "v":
             echo pkgVersion
             quit(0)
@@ -212,6 +259,15 @@ when isMainModule:
 
   if not SOURCE.fileExists:
     error(4, "Source file '$#' does not exist." % [SOURCE])
+
+  if FROM.isNil and TO.isNil:
+    error(5, "--from and --to must be specified together and point to valid positive coordinates.")
+
+  if not FROM.isNil:
+    try:
+      validate(FROM, TO)
+    except CatchableError:
+      error(6, getCurrentExceptionMsg())
 
   if SOURCE.endsWith(".png") or SOURCE.endsWith(".PNG"):
     TARGET = "pixmap"
